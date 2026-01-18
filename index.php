@@ -1,181 +1,59 @@
 <?php
 /*
 ===============================================
-🧠 PURE NEURAL NETWORK AI - FIXED VERSION
+🧠 NEURAL NETWORK AI - WASMER COMPATIBLE
+NO SELECT, NO SQL-LIKE OPERATIONS
 ===============================================
 */
 
-// START BUFFERING - Capture semua output
-ob_start();
+// CLEAN OUTPUT BUFFER
+if (ob_get_level()) ob_clean();
 
-// Set headers pertama
 header('Access-Control-Allow-Origin: *');
 header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-cache, no-store, must-revalidate');
 
 // ================= CONFIGURATION =================
 define('BOT_TOKEN', '8337490666:AAHhTs1w57Ynqs70GP3579IHqo491LHaCl8');
 define('CHAT_ID', '-1003557840518');
-define('VOCAB_SIZE', 1000);
-define('HIDDEN_LAYERS', 2);
-define('LEARNING_RATE', 0.1);
+define('VOCAB_SIZE', 500);  // Reduced for Wasmer
+define('HIDDEN_LAYERS', 1); // Reduced for Wasmer
+define('LEARNING_RATE', 0.05);
 
-// ================= ERROR HANDLING =================
-function jsonError($message) {
-    http_response_code(500);
-    echo json_encode(['error' => $message]);
-    exit;
-}
-
-// ================= NEURAL NETWORK CORE =================
+// ================= NEURAL NETWORK =================
 class NeuralAI {
     private $vocabulary = [];
-    private $word_vectors = [];
     private $synapses = [];
     private $patterns = [];
-    private $weights = [];
+    private $word_frequency = [];
     private $learning_rate = LEARNING_RATE;
     
     public function __construct() {
         $this->loadNeuralData();
     }
     
-    private function textToVector($text) {
-        $words = $this->tokenize($text);
-        $vector = array_fill(0, VOCAB_SIZE, 0);
+    // ================= TEXT PROCESSING =================
+    private function tokenize($text) {
+        $text = strtolower(trim($text));
+        $text = preg_replace('/[^\w\s]/', ' ', $text);
+        $words = preg_split('/\s+/', $text, -1, PREG_SPLIT_NO_EMPTY);
         
+        // Remove stop words
+        $stop_words = ['yang', 'dengan', 'untuk', 'dari', 'pada', 'dan', 'atau', 'tapi', 'adalah', 'itu'];
+        $words = array_diff($words, $stop_words);
+        
+        // Update frequency
         foreach ($words as $word) {
-            $index = $this->getWordIndex($word);
-            if ($index < VOCAB_SIZE && $index >= 0) {
-                $vector[$index] = 1;
+            if (strlen($word) > 1) {
+                $this->word_frequency[$word] = ($this->word_frequency[$word] ?? 0) + 1;
             }
         }
         
-        return $vector;
-    }
-    
-    private function forwardPropagation($input_vector) {
-        $layer_output = $input_vector;
-        
-        for ($i = 0; $i < HIDDEN_LAYERS; $i++) {
-            if (!isset($this->weights[$i])) {
-                $this->initializeWeights($i, count($layer_output), 128);
-            }
-            
-            $layer_output = $this->sigmoid(
-                $this->matrixMultiply($layer_output, $this->weights[$i])
-            );
-        }
-        
-        return $layer_output;
-    }
-    
-    private function vectorToText($output_vector) {
-        if (!is_array($output_vector)) {
-            return $this->getDefaultResponse();
-        }
-        
-        arsort($output_vector);
-        $top_indices = array_slice(array_keys($output_vector), 0, 10, true);
-        
-        $words = [];
-        foreach ($top_indices as $index => $value) {
-            if ($value > 0.3 && isset($this->vocabulary[$index])) {
-                $words[] = $this->vocabulary[$index];
-            }
-        }
-        
-        if (empty($words)) {
-            return $this->getDefaultResponse();
-        }
-        
-        return $this->generateSentence($words);
-    }
-    
-    private function generateSentence($words) {
-        if (empty($words)) {
-            return $this->getDefaultResponse();
-        }
-        
-        $patterns = [
-            "Wah tentang " . implode(", ", array_slice($words, 0, 3)) . " nih!",
-            "Menarik! " . ucfirst($words[0]) . " itu berkaitan dengan " . implode(" dan ", array_slice($words, 1, 2)),
-            ucfirst($words[0]) . " ya? Bisa dijelaskan lebih detail?",
-            "Kalau " . $words[0] . ", biasanya terkait " . implode(", ", array_slice($words, 1, 2)),
-            "Pertanyaan tentang " . implode(" dan ", array_slice($words, 0, 2)) . " ya?"
-        ];
-        
-        $word_string = implode(" ", $words);
-        
-        if (preg_match('/php|javascript|python|java|kode|program/i', $word_string)) {
-            $patterns[] = "Wah bahas programming! " . ucfirst($words[0]) . " itu penting dalam development.";
-        }
-        
-        if (preg_match('/ai|neural|machine|learning|bot/i', $word_string)) {
-            $patterns[] = "AI ya? " . ucfirst($words[0]) . " adalah konsep penting.";
-        }
-        
-        return $patterns[array_rand($patterns)];
-    }
-    
-    public function think($input) {
-        $input = trim($input);
-        
-        if (empty($input)) {
-            return "Kasih input dong bro!";
-        }
-        
-        try {
-            $input_vector = $this->textToVector($input);
-            $neural_output = $this->forwardPropagation($input_vector);
-            $response = $this->vectorToText($neural_output);
-            $this->learnPattern($input, $neural_output);
-            
-            return $response;
-        } catch (Exception $e) {
-            return "Neural network error: " . $e->getMessage();
-        }
-    }
-    
-    private function learnPattern($input, $output_vector) {
-        $words = $this->tokenize($input);
-        
-        $pattern_id = md5($input);
-        $this->patterns[$pattern_id] = [
-            'words' => $words,
-            'vector' => $this->textToVector($input),
-            'strength' => 1,
-            'timestamp' => time()
-        ];
-        
-        foreach ($words as $word) {
-            $index = $this->getWordIndex($word);
-            if ($index >= 0 && $index < VOCAB_SIZE) {
-                for ($i = 0; $i < min(count($output_vector), 50); $i++) {
-                    if ($output_vector[$i] > 0.3) {
-                        $this->strengthenConnection($index, $i, $output_vector[$i]);
-                    }
-                }
-            }
-        }
-        
-        $this->saveNeuralData();
-    }
-    
-    private function strengthenConnection($from, $to, $strength) {
-        if (!isset($this->synapses[$from])) {
-            $this->synapses[$from] = [];
-        }
-        
-        if (!isset($this->synapses[$from][$to])) {
-            $this->synapses[$from][$to] = 0;
-        }
-        
-        $this->synapses[$from][$to] += $strength * $this->learning_rate;
+        return array_values($words);
     }
     
     private function getWordIndex($word) {
-        $word = strtolower(trim($word));
-        
+        $word = strtolower($word);
         if (strlen($word) < 2) return -1;
         
         $index = array_search($word, $this->vocabulary);
@@ -184,139 +62,210 @@ class NeuralAI {
             if (count($this->vocabulary) < VOCAB_SIZE) {
                 $this->vocabulary[] = $word;
                 return count($this->vocabulary) - 1;
-            } else {
-                return rand(0, VOCAB_SIZE - 1);
             }
+            return -1;
         }
         
         return $index;
     }
     
-    private function tokenize($text) {
-        $text = strtolower($text);
-        $text = preg_replace('/[^\w\s]/', ' ', $text);
-        $words = preg_split('/\s+/', $text, -1, PREG_SPLIT_NO_EMPTY);
+    private function textToVector($text) {
+        $words = $this->tokenize($text);
+        $vector = array_fill(0, VOCAB_SIZE, 0);
         
-        $stop_words = ['yang', 'dengan', 'untuk', 'dari', 'pada', 'dan', 'atau', 'tapi', 'adalah', 'itu', 'ini', 'saya', 'kamu', 'dia', 'kita', 'mereka', 'di', 'ke', 'dari'];
-        $words = array_diff($words, $stop_words);
-        
-        return array_values($words);
-    }
-    
-    private function initializeWeights($layer, $input_size, $output_size) {
-        $weights = [];
-        
-        for ($i = 0; $i < $input_size; $i++) {
-            for ($j = 0; $j < $output_size; $j++) {
-                $weights[$i][$j] = (rand() / getrandmax()) * 0.1 - 0.05;
+        foreach ($words as $word) {
+            $index = $this->getWordIndex($word);
+            if ($index >= 0 && $index < VOCAB_SIZE) {
+                $vector[$index] = 1;
             }
         }
         
-        $this->weights[$layer] = $weights;
+        return $vector;
     }
     
-    private function matrixMultiply($vector, $matrix) {
-        $result = array_fill(0, count($matrix[0]), 0);
+    // ================= NEURAL OPERATIONS =================
+    private function neuralProcess($input_vector) {
+        // Simple neural activation (no matrix multiplication to avoid SELECT-like ops)
+        $output = array_fill(0, VOCAB_SIZE, 0);
         
-        foreach ($vector as $i => $value) {
-            if (isset($matrix[$i])) {
-                foreach ($matrix[$i] as $j => $weight) {
-                    $result[$j] += $value * $weight;
+        foreach ($input_vector as $i => $val) {
+            if ($val > 0) {
+                // Activate connected words
+                if (isset($this->synapses[$i])) {
+                    foreach ($this->synapses[$i] as $j => $strength) {
+                        $output[$j] += $strength;
+                    }
                 }
             }
         }
         
-        return $result;
+        // Normalize
+        $max = max($output);
+        if ($max > 0) {
+            foreach ($output as &$val) {
+                $val = $val / $max;
+            }
+        }
+        
+        return $output;
     }
     
-    private function sigmoid($x) {
-        if (is_array($x)) {
-            return array_map(function($val) {
-                return 1 / (1 + exp(-$val));
-            }, $x);
+    private function generateResponse($output_vector) {
+        // Get top activated words
+        arsort($output_vector);
+        $top_words = [];
+        
+        foreach ($output_vector as $index => $activation) {
+            if ($activation > 0.3 && isset($this->vocabulary[$index])) {
+                $top_words[] = $this->vocabulary[$index];
+                if (count($top_words) >= 5) break;
+            }
         }
-        return 1 / (1 + exp(-$x));
+        
+        if (empty($top_words)) {
+            return $this->getDefaultResponse();
+        }
+        
+        return $this->makeSentence($top_words);
+    }
+    
+    private function makeSentence($words) {
+        $templates = [
+            "Wah tentang " . implode(", ", array_slice($words, 0, 3)) . " ya?",
+            ucfirst($words[0]) . " itu berkaitan dengan " . implode(" dan ", array_slice($words, 1, 2)),
+            "Menarik kombinasi kata " . implode(", ", $words) . "!",
+            "Pola " . implode("-", array_slice($words, 0, 2)) . " sering muncul nih.",
+            "Kata kunci: " . implode(", ", $words) . ". Mau bahas yang mana?"
+        ];
+        
+        // Check for programming terms
+        $all_words = implode(" ", $words);
+        if (preg_match('/php|javascript|python|java|kode|program/i', $all_words)) {
+            $templates[] = "Wah bahas programming! " . ucfirst($words[0]) . " itu bahasa yang powerful.";
+        }
+        
+        if (preg_match('/ai|neural|machine|learning|bot/i', $all_words)) {
+            $templates[] = "AI ya? " . ucfirst($words[0]) . " bagian dari machine learning.";
+        }
+        
+        return $templates[array_rand($templates)];
     }
     
     private function getDefaultResponse() {
         $responses = [
-            "Menarik! Bisa jelasin lebih detail?",
-            "Wah ini baru. Ajarin dong tentang ini!",
-            "Oke, gw simpan pola katanya.",
-            "Belum pernah dengar kombinasi kata ini.",
-            "Gw catet pola ini. Makin banyak data, makin pinter nih!"
+            "Menarik pola katanya! Bisa kasih konteks?",
+            "Wah kombinasi baru nih. Gw catet dulu!",
+            "Oke, neural network gw proses ini.",
+            "Makasih inputnya! Gw belajar dari sini.",
+            "Pola kata dicatat. Makin banyak data, makin pinter!"
         ];
         
         return $responses[array_rand($responses)];
     }
     
-    // ================= TRAINING =================
+    // ================= MAIN FUNCTIONS =================
+    public function think($input) {
+        $input = trim($input);
+        
+        if (empty($input)) {
+            return "Kasih input dong bro!";
+        }
+        
+        try {
+            // Convert to vector
+            $vector = $this->textToVector($input);
+            
+            // Neural process
+            $output = $this->neuralProcess($vector);
+            
+            // Generate response
+            $response = $this->generateResponse($output);
+            
+            // Learn from interaction
+            $this->learn($input, $output);
+            
+            return $response;
+            
+        } catch (Exception $e) {
+            return "AI error: " . $e->getMessage();
+        }
+    }
+    
+    private function learn($input, $output_vector) {
+        $words = $this->tokenize($input);
+        
+        // Create connections between words
+        for ($i = 0; $i < count($words); $i++) {
+            for ($j = $i + 1; $j < count($words); $j++) {
+                $word1 = $words[$i];
+                $word2 = $words[$j];
+                
+                $idx1 = $this->getWordIndex($word1);
+                $idx2 = $this->getWordIndex($word2);
+                
+                if ($idx1 >= 0 && $idx2 >= 0) {
+                    // Strengthen connection
+                    if (!isset($this->synapses[$idx1])) {
+                        $this->synapses[$idx1] = [];
+                    }
+                    if (!isset($this->synapses[$idx1][$idx2])) {
+                        $this->synapses[$idx1][$idx2] = 0;
+                    }
+                    $this->synapses[$idx1][$idx2] += $this->learning_rate;
+                }
+            }
+        }
+        
+        // Save learning
+        $this->saveData();
+    }
     
     public function train($pattern) {
         $words = $this->tokenize($pattern);
         
         if (count($words) < 1) {
-            return "Pattern harus ada kata-katanya bro!";
+            return "Pattern butuh kata-kata bro!";
         }
         
         $vector = $this->textToVector($pattern);
-        $output = $this->forwardPropagation($vector);
-        $this->learnPattern($pattern, $output);
-        $this->updateWeights($vector, $output);
+        $output = $this->neuralProcess($vector);
+        $this->learn($pattern, $output);
         
-        return "✅ Neural network trained with pattern: " . implode(" ", array_slice($words, 0, 5)) . "...";
+        return "✅ Neural trained: " . implode(" ", array_slice($words, 0, 3)) . "...";
     }
     
-    private function updateWeights($input_vector, $output_vector) {
-        for ($layer = 0; $layer < HIDDEN_LAYERS; $layer++) {
-            if (isset($this->weights[$layer])) {
-                for ($i = 0; $i < count($this->weights[$layer]); $i++) {
-                    for ($j = 0; $j < count($this->weights[$layer][$i]); $j++) {
-                        $delta = $output_vector[$j] * $this->learning_rate;
-                        $this->weights[$layer][$i][$j] += $delta;
-                        $this->weights[$layer][$i][$j] = max(-1, min(1, $this->weights[$layer][$i][$j]));
-                    }
-                }
-            }
-        }
-    }
-    
-    // ================= DATA MANAGEMENT =================
-    
-    private function saveNeuralData() {
+    // ================= DATA STORAGE =================
+    private function saveData() {
         $data = [
             'vocabulary' => $this->vocabulary,
             'synapses' => $this->synapses,
+            'word_frequency' => $this->word_frequency,
             'patterns' => $this->patterns,
-            'weights' => $this->weights,
-            'saved_at' => time()
+            'timestamp' => time()
         ];
         
-        $json_data = json_encode($data, JSON_UNESCAPED_UNICODE);
+        // Save locally (file_put_contents is allowed)
+        file_put_contents('neural_cache.dat', serialize($data));
         
-        // Save locally
-        file_put_contents('neural_data.json', $json_data);
-        
-        // Save to Telegram (async)
-        $this->asyncSaveToTelegram($json_data);
+        // Async save to Telegram using curl (not file_get_contents)
+        $this->asyncSaveToTelegram($data);
     }
     
     private function asyncSaveToTelegram($data) {
-        $url = "https://api.telegram.org/bot" . BOT_TOKEN . "/sendMessage";
-        $payload = [
-            'chat_id' => CHAT_ID,
-            'text' => "NEURAL_DATA:" . $data,
-            'parse_mode' => 'HTML'
-        ];
+        $json_data = json_encode($data, JSON_UNESCAPED_UNICODE);
+        $message = "NEURAL:" . $json_data;
         
-        // Async request
+        // Use curl instead of file_get_contents
         $ch = curl_init();
         curl_setopt_array($ch, [
-            CURLOPT_URL => $url,
+            CURLOPT_URL => "https://api.telegram.org/bot" . BOT_TOKEN . "/sendMessage",
             CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => $payload,
+            CURLOPT_POSTFIELDS => [
+                'chat_id' => CHAT_ID,
+                'text' => substr($message, 0, 4000) // Telegram limit
+            ],
             CURLOPT_RETURNTRANSFER => false,
-            CURLOPT_TIMEOUT => 1, // Very short timeout for async
+            CURLOPT_TIMEOUT => 2,
             CURLOPT_SSL_VERIFYPEER => false
         ]);
         
@@ -325,77 +274,37 @@ class NeuralAI {
     }
     
     private function loadNeuralData() {
-        // Try local file
-        if (file_exists('neural_data.json')) {
-            $json = file_get_contents('neural_data.json');
-            $data = json_decode($json, true);
-            
-            if ($data && is_array($data)) {
+        // Try local cache first
+        if (file_exists('neural_cache.dat')) {
+            $data = unserialize(file_get_contents('neural_cache.dat'));
+            if ($data) {
                 $this->vocabulary = $data['vocabulary'] ?? [];
                 $this->synapses = $data['synapses'] ?? [];
+                $this->word_frequency = $data['word_frequency'] ?? [];
                 $this->patterns = $data['patterns'] ?? [];
-                $this->weights = $data['weights'] ?? [];
                 return;
             }
         }
         
-        // Try Telegram
-        $this->loadFromTelegram();
-    }
-    
-    private function loadFromTelegram() {
-        $url = "https://api.telegram.org/bot" . BOT_TOKEN . "/getChatHistory";
-        $params = [
-            'chat_id' => CHAT_ID,
-            'limit' => 50
-        ];
-        
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $url . '?' . http_build_query($params),
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 10,
-            CURLOPT_SSL_VERIFYPEER => false
-        ]);
-        
-        $response = curl_exec($ch);
-        curl_close($ch);
-        
-        if ($response) {
-            $data = json_decode($response, true);
-            if (isset($data['result']) && is_array($data['result'])) {
-                foreach ($data['result'] as $message) {
-                    if (isset($message['text']) && strpos($message['text'], 'NEURAL_DATA:') === 0) {
-                        $neural_data = json_decode(substr($message['text'], 12), true);
-                        if ($neural_data) {
-                            $this->vocabulary = $neural_data['vocabulary'] ?? [];
-                            $this->synapses = $neural_data['synapses'] ?? [];
-                            $this->patterns = $neural_data['patterns'] ?? [];
-                            $this->weights = $neural_data['weights'] ?? [];
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        // Initialize empty
+        $this->vocabulary = [];
+        $this->synapses = [];
+        $this->word_frequency = [];
+        $this->patterns = [];
     }
     
     // ================= UTILITIES =================
-    
     public function getStats() {
-        $word_counts = array_count_values($this->vocabulary);
-        arsort($word_counts);
-        $top_words = array_slice($word_counts, 0, 10, true);
+        $top_words = $this->word_frequency;
+        arsort($top_words);
+        $top_words = array_slice($top_words, 0, 10, true);
         
         return [
-            'vocabulary_size' => count($this->vocabulary),
-            'patterns_learned' => count($this->patterns),
-            'synapse_count' => $this->countSynapses(),
+            'vocabulary' => count($this->vocabulary),
+            'synapses' => $this->countSynapses(),
             'top_words' => $top_words,
-            'hidden_layers' => HIDDEN_LAYERS,
             'learning_rate' => $this->learning_rate,
-            'neural_status' => 'active',
-            'memory_usage' => memory_get_usage(true) / 1024 / 1024 . ' MB'
+            'status' => 'neural_active'
         ];
     }
     
@@ -407,70 +316,49 @@ class NeuralAI {
         return $total;
     }
     
-    public function searchPatterns($keyword) {
+    public function search($keyword) {
         $results = [];
         $keyword_lower = strtolower($keyword);
         
-        foreach ($this->patterns as $pattern) {
-            $words = implode(' ', $pattern['words']);
-            if (stripos($words, $keyword_lower) !== false) {
+        foreach ($this->vocabulary as $word) {
+            if (stripos($word, $keyword_lower) !== false) {
                 $results[] = [
-                    'words' => $pattern['words'],
-                    'strength' => $pattern['strength'],
-                    'age' => $this->formatAge($pattern['timestamp'])
+                    'word' => $word,
+                    'frequency' => $this->word_frequency[$word] ?? 0
                 ];
             }
         }
         
-        return $results;
-    }
-    
-    private function formatAge($timestamp) {
-        $diff = time() - $timestamp;
-        
-        if ($diff < 60) return 'baru saja';
-        if ($diff < 3600) return floor($diff / 60) . ' menit lalu';
-        if ($diff < 86400) return floor($diff / 3600) . ' jam lalu';
-        
-        return floor($diff / 86400) . ' hari lalu';
-    }
-    
-    public function exportData() {
-        return [
-            'vocabulary' => $this->vocabulary,
-            'patterns' => $this->patterns,
-            'synapses' => $this->synapses,
-            'weights' => $this->weights,
-            'exported_at' => time()
-        ];
+        return array_slice($results, 0, 20);
     }
 }
 
 // ================= API HANDLER =================
-function handleAPI() {
-    // Clear any previous output
-    ob_clean();
+function handleRequest() {
+    // Clean any previous output
+    if (ob_get_level()) ob_clean();
     
-    $ai = new NeuralAI();
-    
-    // Get input - handle both POST and GET
+    // Get input safely
     $input = [];
     
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!empty($_POST)) {
             $input = $_POST;
         } else {
-            // Try to get raw POST data
-            $raw_input = file_get_contents('php://input');
-            if (!empty($raw_input)) {
-                parse_str($raw_input, $input);
+            $raw = file_get_contents('php://input');
+            if (!empty($raw)) {
+                parse_str($raw, $input);
             }
         }
     } else {
         $input = $_GET;
     }
     
+    // Default action
     $action = $input['action'] ?? 'think';
+    
+    // Initialize AI
+    $ai = new NeuralAI();
     $response = [];
     
     try {
@@ -491,47 +379,31 @@ function handleAPI() {
                 
             case 'search':
                 $keyword = $input['keyword'] ?? '';
-                $response = ['results' => $ai->searchPatterns($keyword)];
+                $response = ['results' => $ai->search($keyword)];
                 break;
                 
-            case 'export':
-                $response = $ai->exportData();
-                break;
-                
-            case 'neural_status':
-                $response = [
-                    'status' => 'neural_network_active',
-                    'vocabulary_size' => count($ai->vocabulary),
-                    'timestamp' => time()
-                ];
-                break;
-                
-            case 'test':
-                $response = [
-                    'status' => 'ok',
-                    'message' => 'Neural AI is working',
-                    'time' => date('Y-m-d H:i:s')
-                ];
+            case 'ping':
+                $response = ['status' => 'alive', 'time' => time()];
                 break;
                 
             default:
-                $response = ['error' => 'Unknown action', 'valid_actions' => ['think', 'train', 'stats', 'search', 'export', 'neural_status', 'test']];
+                $response = ['error' => 'Unknown action', 'help' => 'Use: think, train, stats, search, ping'];
         }
     } catch (Exception $e) {
-        $response = ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()];
+        $response = ['error' => $e->getMessage()];
     }
     
     // Ensure JSON output
-    echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    header('Content-Type: application/json');
+    echo json_encode($response, JSON_UNESCAPED_UNICODE);
+    exit;
 }
 
 // ================= EXECUTION =================
 if (php_sapi_name() === 'cli') {
-    // CLI Mode - allow output
-    ob_end_clean();
-    
-    echo "🧠 NEURAL NETWORK AI - CLI Mode\n";
-    echo "===============================\n\n";
+    // CLI Mode
+    echo "🧠 NEURAL AI - CLI Mode\n";
+    echo "=======================\n\n";
     
     $ai = new NeuralAI();
     
@@ -539,8 +411,8 @@ if (php_sapi_name() === 'cli') {
         switch ($argv[1]) {
             case 'think':
                 if ($argc > 2) {
-                    $message = implode(' ', array_slice($argv, 2));
-                    echo "AI: " . $ai->think($message) . "\n";
+                    $msg = implode(' ', array_slice($argv, 2));
+                    echo "AI: " . $ai->think($msg) . "\n";
                 }
                 break;
                 
@@ -556,45 +428,27 @@ if (php_sapi_name() === 'cli') {
                 break;
                 
             case 'test':
-                echo "🧪 Testing neural network...\n";
-                echo "Think 'hello': " . $ai->think('hello') . "\n";
-                echo "Think 'php python': " . $ai->think('php python') . "\n";
-                echo "Think 'ai neural': " . $ai->think('ai neural') . "\n";
-                break;
-                
-            case 'interactive':
-                while (true) {
-                    echo "\nYou: ";
-                    $input = trim(fgets(STDIN));
-                    
-                    if (strtolower($input) === 'exit') break;
-                    if (strtolower($input) === 'stats') {
-                        print_r($ai->getStats());
-                        continue;
-                    }
-                    
-                    echo "AI: " . $ai->think($input) . "\n";
-                }
+                echo "Testing...\n";
+                echo "1. " . $ai->think("hello") . "\n";
+                echo "2. " . $ai->think("php javascript") . "\n";
+                echo "3. " . $ai->think("neural ai") . "\n";
                 break;
                 
             default:
-                echo "Usage:\n";
-                echo "  php neural_ai_engine.php think \"message\"\n";
-                echo "  php neural_ai_engine.php train \"pattern words\"\n";
-                echo "  php neural_ai_engine.php stats\n";
-                echo "  php neural_ai_engine.php test\n";
-                echo "  php neural_ai_engine.php interactive\n";
+                echo "Commands:\n";
+                echo "  think <message>\n";
+                echo "  train <pattern>\n";
+                echo "  stats\n";
+                echo "  test\n";
         }
     } else {
-        echo "Usage:\n";
-        echo "  php neural_ai_engine.php think \"message\"\n";
-        echo "  php neural_ai_engine.php train \"pattern words\"\n";
-        echo "  php neural_ai_engine.php stats\n";
-        echo "  php neural_ai_engine.php test\n";
-        echo "  php neural_ai_engine.php interactive\n";
+        echo "Commands:\n";
+        echo "  think <message>\n";
+        echo "  train <pattern>\n";
+        echo "  stats\n";
+        echo "  test\n";
     }
 } else {
-    // HTTP Mode - no extra output
-    handleAPI();
-    ob_end_flush();
+    // HTTP Mode
+    handleRequest();
 }
